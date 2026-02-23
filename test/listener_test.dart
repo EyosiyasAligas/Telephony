@@ -1,4 +1,4 @@
-import "package:another_telephony/telephony.dart";
+import "package:another_telephony_plus/telephony.dart";
 import "package:flutter/services.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:platform/platform.dart";

@@ -60,10 +60,10 @@ class SmsController(private val context: Context) {
     }
 
     // SEND SMS
-    fun sendSms(destinationAddress: String, messageBody: String, listenStatus: Boolean, subId: Int) {
+    fun sendSms(destinationAddress: String, messageBody: String, listenStatus: Boolean, subId: Int, messageId: String?) {
         val smsManager = getSmsManager(subId)
-        if (listenStatus) {
-            val pendingIntents = getPendingIntents()
+        if (listenStatus && messageId != null) {
+            val pendingIntents = getPendingIntents(messageId)
             smsManager.sendTextMessage(
                 destinationAddress,
                 null,
@@ -76,11 +76,11 @@ class SmsController(private val context: Context) {
         }
     }
 
-    fun sendMultipartSms(destinationAddress: String, messageBody: String, listenStatus: Boolean, subId: Int) {
+    fun sendMultipartSms(destinationAddress: String, messageBody: String, listenStatus: Boolean, subId: Int, messageId: String?) {
         val smsManager = getSmsManager(subId)
         val messageParts = smsManager.divideMessage(messageBody)
-        if (listenStatus) {
-            val pendingIntents = getMultiplePendingIntents(messageParts.size)
+        if (listenStatus && messageId != null) {
+            val pendingIntents = getMultiplePendingIntents(messageParts.size, messageId)
             smsManager.sendMultipartTextMessage(
                 destinationAddress,
                 null,
@@ -93,11 +93,12 @@ class SmsController(private val context: Context) {
         }
     }
 
-    private fun getMultiplePendingIntents(size: Int): Pair<ArrayList<PendingIntent>, ArrayList<PendingIntent>> {
+    private fun getMultiplePendingIntents(size: Int, messageId: String): Pair<ArrayList<PendingIntent>, ArrayList<PendingIntent>> {
         val sentPendingIntents = arrayListOf<PendingIntent>()
         val deliveredPendingIntents = arrayListOf<PendingIntent>()
         for (i in 1..size) {
-            val pendingIntents = getPendingIntents()
+
+            val pendingIntents = getPendingIntents(messageId)
             sentPendingIntents.add(pendingIntents.first)
             deliveredPendingIntents.add(pendingIntents.second)
         }
@@ -113,27 +114,30 @@ class SmsController(private val context: Context) {
         context.applicationContext.startActivity(intent)
     }
 
-    private fun getPendingIntents(): Pair<PendingIntent, PendingIntent> {
+    private fun getPendingIntents(messageId: String): Pair<PendingIntent, PendingIntent> {
+        // We use messageId.hashCode() to ensure the OS treats every message as unique
+        val uniqueId = messageId.hashCode()
+
         val sentIntent = Intent(ACTION_SMS_SENT).apply {
             `package` = context.applicationContext.packageName
-            flags = Intent.FLAG_RECEIVER_REGISTERED_ONLY
+            putExtra("messageId", messageId) // Pass ID to the receiver
         }
         val sentPendingIntent = PendingIntent.getBroadcast(
             context,
-            SMS_SENT_BROADCAST_REQUEST_CODE,
+            uniqueId,
             sentIntent,
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val deliveredIntent = Intent(ACTION_SMS_DELIVERED).apply {
             `package` = context.applicationContext.packageName
-            flags = Intent.FLAG_RECEIVER_REGISTERED_ONLY
+            putExtra("messageId", messageId)
         }
         val deliveredPendingIntent = PendingIntent.getBroadcast(
             context,
-            SMS_DELIVERED_BROADCAST_REQUEST_CODE,
+            uniqueId + 1, // Different code for delivery
             deliveredIntent,
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         return Pair(sentPendingIntent, deliveredPendingIntent)

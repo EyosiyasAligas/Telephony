@@ -1,4 +1,4 @@
-import 'package:another_telephony/telephony.dart';
+import 'package:another_telephony_plus/telephony.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
@@ -34,8 +34,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   onSendStatus(SendStatus status) {
+    print("[onSendStatus] Send status: $status");
     setState(() {
-      _message = status == SendStatus.SENT ? "sent" : "delivered";
+      _message = status == SendStatus.SENT ? "sent" : status == SendStatus.DELIVERED ? "delivered" : "failed";
     });
   }
 
@@ -141,11 +142,13 @@ class _MyAppState extends State<MyApp> {
                             ElevatedButton(
                               onPressed: () async {
                                 try {
+                                  print("Attempting to send SMS from SIM ${index + 1} with subscription ID ${sub.subscriptionId}");
                                   await telephony.sendSms(
-                                    to: "1234567890",
+                                    to: "0925760666",
                                     message: "Test from ${sub.displayName}",
                                     subscriptionId: sub.subscriptionId!,
                                     statusListener: onSendStatus,
+                                    messageId: "msg_${DateTime.now().millisecondsSinceEpoch}"
                                   );
                                 } catch (e) {
                                   debugPrint('Error sending SMS: $e');

@@ -55,7 +55,7 @@ class Telephony {
 
   late MessageHandler _onNewMessage;
   late MessageHandler _onBackgroundMessages;
-  late SmsSendStatusListener _statusListener;
+  final Map<String, SmsSendStatusListener> _statusListeners = {};
 
   ///
   /// Gets a singleton instance of the [Telephony] class.
@@ -146,10 +146,47 @@ class Telephony {
       case ON_MESSAGE:
         final message = call.arguments["message"];
         return _onNewMessage(SmsMessage.fromMap(message, INCOMING_SMS_COLUMNS));
+
       case SMS_SENT:
-        return _statusListener(SendStatus.SENT);
       case SMS_DELIVERED:
-        return _statusListener(SendStatus.DELIVERED);
+        final Map<dynamic, dynamic> args = call.arguments;
+        final String? id = args["messageId"];
+        final String? status = args["status"];
+
+        if (id != null && _statusListeners.containsKey(id)) {
+          SendStatus sendStatus;
+
+          // Map the Kotlin strings to Dart Enums
+          if (status == "delivered") {
+            sendStatus = SendStatus.DELIVERED;
+          } else if (status == "sent") {
+            sendStatus = SendStatus.SENT;
+          } else if (status != null && status.startsWith("error_")) {
+            print('[Telephony] Received error status: $status for messageId: $id');
+            // Captures error_no_balance, error_no_signal, error_unknown, etc.
+            sendStatus = SendStatus.FAILED;
+          } else {
+            // Fallback for any unexpected string
+            sendStatus = SendStatus.FAILED;
+          }
+
+          // Trigger the specific listener assigned to this messageId
+          _statusListeners[id]!(sendStatus);
+
+          // CLEANUP LOGIC:
+          // We remove the listener if it's a "terminal" state.
+          // - Delivered is the final success state.
+          // - Any error is a final failure state.
+          // Note: We keep the listener if the status is just "sent",
+          // because we are still waiting for the "delivered" callback.
+          if (sendStatus == SendStatus.DELIVERED || sendStatus == SendStatus.FAILED) {
+            _statusListeners.remove(id);
+          }
+        }
+        return Future.value();
+
+      default:
+        return Future.value();
     }
   }
 
@@ -307,19 +344,24 @@ class Telephony {
     SmsSendStatusListener? statusListener,
     bool isMultipart = false,
     int subscriptionId = -1,
+    String? messageId
   }) async {
     assert(_platform.isAndroid == true, "Can only be called on Android.");
     bool listenStatus = false;
+    final String actualId = messageId ?? DateTime.now().millisecondsSinceEpoch.toString();
+
     if (statusListener != null) {
-      _statusListener = statusListener;
+      _statusListeners[actualId] = statusListener;
       listenStatus = true;
     }
     final Map<String, dynamic> args = {
       "address": to,
       "message_body": message,
       "listen_status": listenStatus,
-      "sub_id": subscriptionId
+      "sub_id": subscriptionId,
+      "messageId": messageId
     };
+    print("Sending SMS with args: $args");
     final String method = isMultipart ? SEND_MULTIPART_SMS : SEND_SMS;
     await _foregroundChannel.invokeMethod(method, args);
   }
